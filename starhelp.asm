@@ -1,9 +1,9 @@
         .title ISO-9660 (CDFS) for the BBC Micro
         .module starhelp
         .r6500
-        .include "mos.inc"
         .area SWROM
 
+; *HELP handler
 starhelp::
         pha
         jsr OSNEWL
