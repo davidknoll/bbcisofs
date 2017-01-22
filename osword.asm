@@ -2,8 +2,13 @@
         .module osword
         .r6500
         .area SWROM
+        .define SERTEST
 
 ; To make it easier to address the device differently
+        .ifdef SERTEST
+        .include "sertest.inc"
+        .else
+
         .macro iolda addr
         lda addr
         .endm
@@ -11,6 +16,7 @@
         .macro iosta addr
         sta addr
         .endm
+        .endif
 
 ; TODO: This probably needs to timeout
         .macro nbsywait ?lp
@@ -82,7 +88,7 @@ atapipkt:
         iolda IDESTAT   ; DRQ and not ERR?
         and #0x09
         cmp #0x08
-        bne 3$
+        bne 33$
         ldx #0          ; Set pointer and count for command packet
         stx 0xEF
         ldx #12
@@ -100,7 +106,7 @@ atapipkt:
         iolda IDESTAT   ; DRQ and not ERR?
         and #0x09
         cmp #0x08
-        bne 3$
+33$:    bne 3$
         iolda IDECYLL   ; Set up byte count for this DRQ
         tax
         iolda IDECYLH
