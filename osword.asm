@@ -2,25 +2,10 @@
         .module osword
         .r6500
         .area SWROM
-        .define SERTEST
-
-; To make it easier to address the device differently
-        .ifdef SERTEST
-        .include "sertest.inc"
-        .else
-
-        .macro iolda addr
-        lda addr
-        .endm
-
-        .macro iosta addr
-        sta addr
-        .endm
-        .endif
 
 ; TODO: This probably needs to timeout
         .macro nbsywait ?lp
-lp:     iolda IDESTAT
+lp:     lda IDESTAT
         rol
         bcs lp
         .endm
@@ -68,24 +53,24 @@ oswhndl::
 atapipkt:
 ; Select device
         nbsywait
-        lda #0x00       ; Hardcode master for now
-        iosta IDEHEAD
+        lda #0x10       ; Hardcode slave for now
+        sta IDEHEAD
 ; Issue the PACKET command
         nbsywait
         ldx #0x00
         txa
-        iosta IDEFEAT   ; No overlap or DMA
-        iosta IDESCCT   ; No TCQ
+        sta IDEFEAT     ; No overlap or DMA
+        sta IDESCCT     ; No TCQ
         dex
         txa
-        iosta IDECYLH   ; Max byte count per DRQ of 0xFFFE
+        sta IDECYLH     ; Max byte count per DRQ of 0xFFFE
         dex
-        iosta IDECYLL
+        sta IDECYLL
         lda #0xA0       ; PACKET command
-        iosta IDECMD
+        sta IDECMD
 ; Output command packet
         nbsywait
-        iolda IDESTAT   ; DRQ and not ERR?
+        lda IDESTAT     ; DRQ and not ERR?
         and #0x09
         cmp #0x08
         bne 33$
@@ -103,15 +88,15 @@ atapipkt:
         pla
         sta 0xF0
 1$:     nbsywait
-        iolda IDESTAT   ; DRQ and not ERR?
+        lda IDESTAT     ; DRQ and not ERR?
         and #0x09
         cmp #0x08
 33$:    bne 3$
-        iolda IDECYLL   ; Set up byte count for this DRQ
+        lda IDECYLL     ; Set up byte count for this DRQ
         tax
-        iolda IDECYLH
+        lda IDECYLH
         sta 0xEF
-        iolda IDESCCT   ; Read or write?
+        lda IDESCCT     ; Read or write?
         ror
         ror
         bcc 2$
@@ -120,10 +105,10 @@ atapipkt:
 2$:     jsr wrtlp
         jmp 1$          ; Go back for next DRQ
 ; Completion
-3$:     iolda IDESTAT   ; ERR/CHK flag? If so, read error register
+3$:     lda IDESTAT     ; ERR/CHK flag? If so, read error register
         and #0x01
         beq 4$
-        iolda IDEERR
+        lda IDEERR
 4$:     rts
 
 ; DRQ read loop
@@ -135,7 +120,7 @@ atapipkt:
 ;       0xF0 = lo byte, 0xF1 = hi byte of addr immediately after data
 ;       A = X = 0xEF = 0
 ;       Y preserved
-readlp: iolda IDEDATL   ; Read low byte (high byte is latched)
+readlp: lda IDEDATL     ; Read low byte (high byte is latched)
         sta (0xF0),y
         inc 0xF0        ; Increment pointer
         bne 1$
@@ -148,7 +133,7 @@ readlp: iolda IDEDATL   ; Read low byte (high byte is latched)
         bne 3$
         dec 0xEF
 
-3$:     iolda IDEDATH   ; Read high byte from latch
+3$:     lda IDEDATH     ; Read high byte from latch
         sta (0xF0),y
         inc 0xF0        ; Increment pointer
         bne 4$
@@ -179,10 +164,10 @@ wrtlp:  cpx #1          ; If count = 0x0001 here, we had an odd count
         beq 98$
 99$:    iny             ; Write high byte to latch
         lda (0xF0),y
-        iosta IDEDATH
+        sta IDEDATH
         dey             ; Write low byte (word is sent to drive)
 98$:    lda (0xF0),y
-        iosta IDEDATL
+        sta IDEDATL
 
         inc 0xF0        ; Increment pointer
         bne 1$
