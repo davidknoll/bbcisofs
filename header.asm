@@ -11,9 +11,8 @@ header::
         .db <cpmsg - 1                  ; Copyright message pointer
         .db 0x00                        ; Binary version number
 
-tlmsg:: .strz "ISO-9660 (CDFS)"         ; Title string
-vrmsg:: .strz "0.01 (16 Jan 2017)"      ; Version string
-cpmsg:: .strz "(C)2017 David Knoll"     ; Copyright string
+tlmsg:: .strz "CD-ROM Filing System"    ; Title string
+cpmsg:: .strz "(C)2018 David Knoll"     ; Copyright string
 
 ; Service entry point
 svcent::
@@ -30,6 +29,9 @@ svcent::
 
 ; Claim private workspace
 claimprv::
-        sty 0xDF0,x                     ; Store base address of my workspace
+        pha
+        tya
+        sta 0xDF0,x                     ; Store base address of my workspace
+        pla
         iny                             ; Claim 1 page
         rts

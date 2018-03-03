@@ -3,33 +3,64 @@
         .r6500
 
 ; MOS calls
-OSRDRM  == 0xFFB9
-OSEVEN  == 0xFFBF
-OSFIND  == 0xFFCE
-OSGBPB  == 0xFFD1
-OSBPUT  == 0xFFD4
-OSBGET  == 0XFFD7
-OSARGS  == 0xFFDA
-OSFILE  == 0xFFDD
-OSRDCH  == 0xFFE0
-OSASCI  == 0xFFE3
-OSNEWL  == 0xFFE7
-OSWRCH  == 0xFFEE
-OSWORD  == 0xFFF1
-OSBYTE  == 0xFFF4
-OSCLI   == 0xFFF7
+		.area MOS (ABS)
+		.org 0xFFB9
+OSRDRM::
+		.org 0xFFBF
+OSEVEN::
+		.org 0xFFCE
+OSFIND::
+		.org 0xFFD1
+OSGBPB::
+		.org 0xFFD4
+OSBPUT::
+		.org 0xFFD7
+OSBGET::
+		.org 0xFFDA
+OSARGS::
+		.org 0xFFDD
+OSFILE::
+		.org 0xFFE0
+OSRDCH::
+		.org 0xFFE3
+OSASCI::
+		.org 0xFFE7
+OSNEWL::
+		.org 0xFFEE
+OSWRCH::
+		.org 0xFFF1
+OSWORD::
+		.org 0xFFF4
+OSBYTE::
+		.org 0xFFF7
+OSCLI::
 
 ; IDE interface
-IDEDATL	== 0xFC40
-IDEERR  == 0xFC41
-IDEFEAT == 0xFC41
-IDESCCT == 0xFC42
-IDESECT == 0xFC43
-IDECYLL == 0xFC44
-IDECYLH == 0xFC45
-IDEHEAD == 0xFC46
-IDESTAT == 0xFC47
-IDECMD  == 0xFC47
-IDEDATH == 0xFC48
-IDEALST == 0xFC4E
-IDEDCTL == 0xFC4E
+		.area FRED (ABS)
+		.org 0xFC40
+IDEDATL::
+		.ds 1
+IDEERR::
+IDEFEAT::
+		.ds 1
+IDESCCT::
+		.ds 1
+IDESECT::
+		.ds 1
+IDECYLL::
+		.ds 1
+IDECYLH::
+		.ds 1
+IDEHEAD::
+		.ds 1
+IDESTAT::
+IDECMD::
+		.ds 1
+IDEDATH::
+		.ds 6
+IDEALST::
+IDEDCTL::
+		.ds 1
+IDEDADR::
+
+		.end
