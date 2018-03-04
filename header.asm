@@ -32,6 +32,8 @@ claimprv::
         pha
         tya
         sta 0xDF0,x                     ; Store base address of my workspace
+        clc
+        adc #9                          ; Claim 9 pages
+        tay
         pla
-        iny                             ; Claim 1 page
         rts

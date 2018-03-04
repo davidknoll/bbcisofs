@@ -6,9 +6,10 @@
 ; *HELP handler
 starhelp::
         pha
-        lda (0xF2),y    ; Is this an extended *HELP command?
-        cmp #13
-        bne 3$          ; We don't implement any yet
+        lda [0xF2],y    ; Is this an extended *HELP command?
+        cmp #0x0D
+        bne 3$          ; Because we don't offer any yet
+
         jsr OSNEWL
         ldx #0x00       ; Output the ROM title string
 1$:     lda tlmsg,x
