@@ -1,13 +1,15 @@
+OBJS = crt0.o atapi.o hexdump.o language.o osword.o service.o
+
 .PHONY: all clean
-all: iso9660.rom
+all: cdfs.rom
 clean:
-	rm -f *.hlr *.lst *.map *.rel *.rom *.rst *.s19
+	rm -f *~ *.map *.o *.rom
 
-%.rom: %.s19
-	srec_cat -Output $@ -Binary $< -offset -0x8000 -Fill 0xFF 0x0000 0x4000
+cdfs.rom: swrom.cfg $(OBJS)
+	ld65 -C swrom.cfg -m cdfs.map -o cdfs.rom $(OBJS) --lib none.lib
 
-iso9660.s19: header.rel defs.rel osword.rel starhelp.rel
-	aslink -mosu -b SWROM=0x8000 $@ $^
+%.o: %.c swrom.h
+	cl65 -t none -c $< -o $@
 
-%.rel: %.asm
-	as6500 -glo $<
+%.o: %.s
+	cl65 -t none -c $< -o $@
