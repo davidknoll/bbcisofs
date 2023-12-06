@@ -1,15 +1,41 @@
+#include <6502.h>
 #include <string.h>
 #include "swrom.h"
 
+// Return the least significant byte of the 100Hz system clock
+static unsigned char rdsysclk(void)
+{
+    unsigned char cursysclk[5];
+    struct regs oswregs;
+    oswregs.a = 1;
+    oswregs.x = ((unsigned int) cursysclk);
+    oswregs.y = ((unsigned int) cursysclk) >> 8;
+    oswregs.flags = F6502_I;
+    oswregs.pc = OSWORD;
+    _sys(&oswregs);
+    return cursysclk[0];
+}
+
+// Send a command packet and transfer associated data to/from an ATAPI device
 int packet_cmd(unsigned char device, unsigned char *packet, unsigned char *data, unsigned long datalen)
 {
-    // Select device and wait for it to be ready
+    unsigned char clksave;
     struct ide_interface *ide = (device & 2)
         ? (struct ide_interface *) IDE_SECONDARY
         : (struct ide_interface *) IDE_PRIMARY;
-    while ((ide->command & 0xC0) != 0x40);  // BSY not set, DRDY set
-    ide->head = (device & 1) ? 0xB0 : 0xA0; // Master or slave
-    while ((ide->command & 0xC0) != 0x40);
+    if (device > 3) { return -1; }                      // Invalid drive number
+    CLI();
+
+    // Select device and wait for it to be ready
+    clksave = rdsysclk();
+    while ((ide->command & 0xC0) != 0x40) {             // BSY not set, DRDY set
+        if (rdsysclk() - clksave > 200) { return -2; }  // Selection timeout
+    }
+    ide->head = (device & 1) ? 0xB0 : 0xA0;             // Master or slave
+    clksave = rdsysclk();
+    while ((ide->command & 0xC0) != 0x40) {
+        if (rdsysclk() - clksave > 200) { return -2; }
+    }
 
     // Issue the PACKET command
     ide->error = 0x00;
@@ -17,11 +43,14 @@ int packet_cmd(unsigned char device, unsigned char *packet, unsigned char *data,
     ide->cylinder_hi = 0xFF;
     ide->command = 0xA0;
 
+    clksave = rdsysclk();
     while (ide->command & 0x89) {                       // BSY, DRQ or CHK
+        if (rdsysclk() - clksave > 200) { return -3; }  // Command timeout
         if (ide->command & 0x80) { continue; }          // If BSY, wait
         if (ide->command & 0x01) { return ide->error; } // If CHK, return error
 
         if (ide->command & 0x08) {
+            clksave = rdsysclk();
             switch (ide->count & 0x03) {
             case 0:
                 // Output data to device
