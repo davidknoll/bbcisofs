@@ -1,4 +1,4 @@
-OBJS = crt0.o atapi.o hexdump.o language.o osword.o service.o
+OBJS = crt0.o atapi.o directory.o fs.o hexdump.o language.o osword.o service.o
 
 .PHONY: all clean
 all: cdfs.rom

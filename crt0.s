@@ -5,6 +5,11 @@
         .import _language, _service
         .import __STACKSTART__                  ; Linker generated
 
+        .export _osfile_entry, _osargs_entry, _osbget_entry, _osbput_entry
+        .export _osgbpb_entry, _osfind_entry, _osfsc_entry
+        .import _osfile_handler, _osargs_handler, _osbget_handler, _osbput_handler
+        .import _osgbpb_handler, _osfind_handler, _osfsc_handler
+
         .importzp sp, sreg
         .include "zeropage.inc"
 
@@ -85,6 +90,62 @@ _exit:  ldx spsave
         ldx regsv+1
         lda regsv+0
         plp
+        rts
+
+_osfile_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osfile_handler
+        ldy sreg
+        rts
+
+_osargs_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osargs_handler
+        ldy sreg
+        rts
+
+_osbget_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osbget_handler
+        ldy sreg
+        rts
+
+_osbput_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osbput_handler
+        ldy sreg
+        rts
+
+_osgbpb_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osgbpb_handler
+        ldy sreg
+        rts
+
+_osfind_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osfind_handler
+        ldy sreg
+        rts
+
+_osfsc_entry:
+        sty sreg
+        ldy #0
+        sty sreg+1
+        jsr _osfsc_handler
+        ldy sreg
         rts
 
         .segment "DATA"

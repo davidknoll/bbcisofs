@@ -2,8 +2,8 @@
 #include <string.h>
 #include "swrom.h"
 
-// Return the least significant byte of the 100Hz system clock
-static unsigned char rdsysclk(void)
+// Return the least significant word of the 100Hz system clock
+static unsigned int rdsysclk(void)
 {
     unsigned char cursysclk[5];
     struct regs oswregs;
@@ -13,13 +13,13 @@ static unsigned char rdsysclk(void)
     oswregs.flags = F6502_I;
     oswregs.pc = OSWORD;
     _sys(&oswregs);
-    return cursysclk[0];
+    return *((unsigned int *) cursysclk);
 }
 
 // Send a command packet and transfer associated data to/from an ATAPI device
 int packet_cmd(unsigned char device, unsigned char *packet, unsigned char *data, unsigned long datalen)
 {
-    unsigned char clksave;
+    unsigned int clksave;
     struct ide_interface *ide = (device & 2)
         ? (struct ide_interface *) IDE_SECONDARY
         : (struct ide_interface *) IDE_PRIMARY;
@@ -29,12 +29,12 @@ int packet_cmd(unsigned char device, unsigned char *packet, unsigned char *data,
     // Select device and wait for it to be ready
     clksave = rdsysclk();
     while ((ide->command & 0xC0) != 0x40) {             // BSY not set, DRDY set
-        if (rdsysclk() - clksave > 200) { return -2; }  // Selection timeout
+        if (rdsysclk() - clksave > 1000) { return -2; } // Selection timeout
     }
     ide->head = (device & 1) ? 0xB0 : 0xA0;             // Master or slave
     clksave = rdsysclk();
     while ((ide->command & 0xC0) != 0x40) {
-        if (rdsysclk() - clksave > 200) { return -2; }
+        if (rdsysclk() - clksave > 1000) { return -2; }
     }
 
     // Issue the PACKET command
@@ -45,7 +45,7 @@ int packet_cmd(unsigned char device, unsigned char *packet, unsigned char *data,
 
     clksave = rdsysclk();
     while (ide->command & 0x89) {                       // BSY, DRQ or CHK
-        if (rdsysclk() - clksave > 200) { return -3; }  // Command timeout
+        if (rdsysclk() - clksave > 3000) { return -3; } // Command timeout
         if (ide->command & 0x80) { continue; }          // If BSY, wait
         if (ide->command & 0x01) { return ide->error; } // If CHK, return error
 
@@ -180,4 +180,24 @@ int mode_sense(unsigned char device, unsigned char page, unsigned int alloc, uns
     packet[7] = alloc >> 8;
     packet[8] = alloc;
     return packet_cmd(device, packet, data, alloc);
+}
+
+// Software reset all IDE controllers
+void idereset(void)
+{
+    struct ide_interface *pri = (struct ide_interface *) IDE_PRIMARY;
+    struct ide_interface *sec = (struct ide_interface *) IDE_SECONDARY;
+    unsigned int clksave;
+    CLI();
+
+    clksave = rdsysclk();
+    while (rdsysclk() - clksave < 2);
+    pri->alt_status |= 0x04;
+    sec->alt_status |= 0x04;
+    clksave = rdsysclk();
+    while (rdsysclk() - clksave < 2);
+    pri->alt_status &= ~0x04;
+    sec->alt_status &= ~0x04;
+    clksave = rdsysclk();
+    while (rdsysclk() - clksave < 2);
 }

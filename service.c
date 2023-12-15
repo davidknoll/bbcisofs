@@ -7,7 +7,7 @@ static void __fastcall__ (*oswrch)(unsigned char c) = (void *) OSWRCH;
 static void __fastcall__ (*osnewl)(void) = (void *) OSNEWL;
 
 // Output a string, accounting for UNIX line endings
-static void outstr(const char *str)
+void outstr(const char *str)
 {
     while (*str) {
         if (*str == '\n') {
@@ -50,13 +50,13 @@ static unsigned char cmdmatch(const struct regs *regs, const char *cmd)
 static void eject(void)
 {
     unsigned char data[3];
-    mode_sense(1, 0, sizeof data, data);
+    mode_sense(current_drive, 0, sizeof data, data);
     if (data[2] == 0x71) {
         // Door is open, close it
-        start_stop_unit(1, 1, 3);
+        start_stop_unit(current_drive, 1, 3);
     } else {
         // Door is closed, open it
-        start_stop_unit(1, 1, 2);
+        start_stop_unit(current_drive, 1, 2);
     }
 }
 
@@ -86,8 +86,14 @@ void __fastcall__ service(struct regs *regs)
 {
     switch (regs->a) {
     case 0x04: // *command
-        if (cmdmatch(regs, "EJECT")) {
+        if (cmdmatch(regs, "CDFS")) {
+            fs_install();
+            regs->a = 0;
+        } else if (cmdmatch(regs, "EJECT")) {
             eject();
+            regs->a = 0;
+        } else if (cmdmatch(regs, "IDERESET")) {
+            idereset();
             regs->a = 0;
         } else if (cmdmatch(regs, "CDTEST")) {
             inquiry(1, (void *) 0x4000);
@@ -105,6 +111,9 @@ void __fastcall__ service(struct regs *regs)
         } else if (cmdmatch(regs, "CDTEST3")) {
             cdtest3();
             regs->a = 0;
+        } else if (cmdmatch(regs, "DIRTEST")) {
+            dirtest();
+            regs->a = 0;
         }
         break;
 
@@ -116,10 +125,20 @@ void __fastcall__ service(struct regs *regs)
 
     case 0x09: // *HELP
         if (cmdmatch(regs, "CDFS")) {
-            outstr("\nCD-ROM Filing System\n  EJECT\n  CDTEST\n  CDTEST2\n  CDTEST3\n");
+            outstr("\nCD-ROM Filing System\n");
+            outstr("  CDFS\n  EJECT\n  IDERESET\n");
+            outstr("  CDTEST\n  CDTEST2\n  CDTEST3\n  DIRTEST\n");
             regs->a = 0;
         } else if (cmdmatch(regs, "")) {
-            outstr("\nCD-ROM Filing System\n  CDFS\n");
+            outstr("\nCD-ROM Filing System\n");
+            outstr("  CDFS\n");
+        }
+        break;
+
+    case 0x12: // Select filing system
+        if (regs->y == FS_NO) {
+            fs_install();
+            regs->a = 0;
         }
         break;
     }
