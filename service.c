@@ -70,6 +70,7 @@ static void eject(void)
     }
 }
 
+#ifdef DEBUG
 // Test reading the CD using our OSWORD function
 static void cdtest3(void)
 {
@@ -90,6 +91,7 @@ static void cdtest3(void)
     _sys(&oswregs);
     hexdump((void *) 0x4000, 2 * SECTOR_SIZE);
 }
+#endif /* DEBUG */
 
 // Service ROM entry point (instead of main)
 void __fastcall__ service(struct regs *regs)
@@ -105,6 +107,7 @@ void __fastcall__ service(struct regs *regs)
         } else if (cmdmatch(regs, "IDERESET")) {
             idereset();
             regs->a = 0;
+#ifdef DEBUG
         } else if (cmdmatch(regs, "CDTEST")) {
             inquiry(1, (void *) 0x4000);
             hexdump((void *) 0x4000, 36);
@@ -124,6 +127,7 @@ void __fastcall__ service(struct regs *regs)
         } else if (cmdmatch(regs, "DIRTEST")) {
             dirtest();
             regs->a = 0;
+#endif /* DEBUG */
         }
         break;
 
@@ -137,7 +141,9 @@ void __fastcall__ service(struct regs *regs)
         if (cmdmatch(regs, "CDFS")) {
             outstr("\nCD-ROM Filing System\n");
             outstr("  CDFS\n  EJECT\n  IDERESET\n");
+#ifdef DEBUG
             outstr("  CDTEST\n  CDTEST2\n  CDTEST3\n  DIRTEST\n");
+#endif /* DEBUG */
             regs->a = 0;
         } else if (cmdmatch(regs, "")) {
             outstr("\nCD-ROM Filing System\n");

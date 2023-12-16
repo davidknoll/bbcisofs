@@ -147,10 +147,33 @@ struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name)
 // and return a pointer to the root directory entry, or null on error
 struct isodirent *loadrootdir(void)
 {
-    if (loaddirsec(16)) { return 0; }
+    // Try 3 times to load the PVD
+    if (loaddirsec(16) != 0) {
+        if (loaddirsec(16) != 0) {
+            if (loaddirsec(16) != 0) {
+                return 0;
+            }
+        }
+    }
     return (struct isodirent *) (dirsecbuf + 156);
 }
 
+// Load the PVD into the directory sector buffer
+// and return a pointer to the volume identifier, or null on error
+unsigned char *loadtitle(void)
+{
+    // Try 3 times to load the PVD
+    if (loaddirsec(16) != 0) {
+        if (loaddirsec(16) != 0) {
+            if (loaddirsec(16) != 0) {
+                return 0;
+            }
+        }
+    }
+    return dirsecbuf + 40;
+}
+
+#ifdef DEBUG
 // Test loading a directory and picking a name out of it
 void dirtest(void)
 {
@@ -176,3 +199,4 @@ void dirtest(void)
     outstr("\n");
     hexdump(foundent, foundent->direntlen);
 }
+#endif /* DEBUG */

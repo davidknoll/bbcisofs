@@ -1,3 +1,4 @@
+#ifdef DEBUG
 #include "swrom.h"
 
 static void __fastcall__ (*oswrch)(unsigned char c) = (void *) OSWRCH;
@@ -62,3 +63,4 @@ void hexdump(const void *ptr, unsigned int len)
     startptr += 16;
   }
 }
+#endif /* DEBUG */

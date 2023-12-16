@@ -128,11 +128,18 @@ unsigned long osfile_handler(unsigned long axy)
 
 unsigned long osargs_handler(unsigned long axy)
 {
+    unsigned long *params = (unsigned long *) ((axy >> 8) & 0x00FF);
     if (axy & 0x00FF0000) { brk_error(0xDE, "Not open"); }
+
     switch (axy & 0xFF) {
     case 0x00: // Return filing system number
         axy &= ~0xFF;
         axy |= FS_NO;
+        break;
+
+    case 0x01: // Return address of command line tail
+        axy &= ~0xFF;
+        *params = 0xFFFF0000 | *((unsigned int *) 0xF2);
         break;
     }
     return axy;
@@ -153,7 +160,89 @@ unsigned long osbput_handler(unsigned long axy)
     return axy;
 }
 
-unsigned long osgbpb_handler(unsigned long axy) { return axy; }
+unsigned long osgbpb_handler(unsigned long axy)
+{
+    struct osgbpb_control *params = (struct osgbpb_control *) (axy >> 8);
+    unsigned char *title;
+    unsigned char *titlelen = (unsigned char *) params->address;
+
+    switch (axy & 0xFF) {
+    case 0x01: // Write bytes to file at specified pointer
+    case 0x02: // Write bytes to file at current pointer
+        if (params->handle) { brk_error(0xDE, "Not open"); }
+        axy &= ~0xFF;
+        while (params->count--) {
+            oswrch(*((unsigned char *) (params->address++)));
+            params->pointer++;
+        }
+        break;
+
+    case 0x03: // Read bytes from file at specified pointer
+    case 0x04: // Read bytes from file at current pointer
+        if (params->handle) { brk_error(0xDE, "Not open"); }
+        axy &= ~0xFF;
+        while (params->count--) {
+            *((unsigned char *) (params->address++)) = osrdch();
+            params->pointer++;
+        }
+        break;
+
+    case 0x05: // Read title and option from current drive
+        title = loadtitle();
+        if (title == 0) { brk_error(0xD3, "Bad or no disc"); }
+        axy &= ~0xFF;
+
+        // Length of title
+        if (params->count == 0) { break; }
+        *titlelen = 0;
+        params->address++;
+        params->count--;
+
+        // Title
+        while (*titlelen < 32 && title[*titlelen] > ' ') {
+            if (params->count) {
+                *((unsigned char *) (params->address++)) = title[*titlelen];
+                params->count--;
+            }
+            (*titlelen)++;
+        }
+
+        // Boot option, drive number
+        if (params->count == 0) { break; }
+        *((unsigned char *) (params->address++)) = 0;
+        params->count--;
+        if (params->count == 0) { break; }
+        *((unsigned char *) (params->address++)) = current_drive;
+        params->count--;
+        break;
+
+    case 0x06: // Read current drive and directory names
+    case 0x07: // Read library drive and directory names
+        axy &= ~0xFF;
+
+        // Drive number, as a string
+        if (params->count == 0) { break; }
+        *((unsigned char *) (params->address++)) = 1;
+        params->count--;
+        if (params->count == 0) { break; }
+        *((unsigned char *) (params->address++)) = '0' + current_drive;
+        params->count--;
+
+        // Directory name, as a string
+        if (params->count == 0) { break; }
+        *((unsigned char *) (params->address++)) = 1;
+        params->count--;
+        if (params->count == 0) { break; }
+        *((unsigned char *) (params->address++)) = '$';
+        params->count--;
+        break;
+
+    case 0x08: // Read file names from the current directory
+        axy &= ~0xFF;
+        break;
+    }
+    return axy;
+}
 
 unsigned long osfind_handler(unsigned long axy)
 {

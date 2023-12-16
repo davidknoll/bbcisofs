@@ -65,10 +65,12 @@ extern void idereset(void);
 #define SECTOR_SIZE 2048
 
 /* For debugging */
+#ifdef DEBUG
 extern void outhn(unsigned char n);
 extern void outhb(unsigned char b);
 extern void outhw(unsigned int w);
 extern void hexdump(const void *ptr, unsigned int len);
+#endif /* DEBUG */
 extern void outstr(const char *str);
 extern void brk_error(unsigned char num, const unsigned char *msg);
 
@@ -120,7 +122,10 @@ extern unsigned char current_directory[33 + 31];
 
 extern struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name);
 extern struct isodirent *loadrootdir(void);
+extern unsigned char *loadtitle(void);
+#ifdef DEBUG
 extern void dirtest(void);
+#endif /* DEBUG */
 
 /* Filing system vectors */
 extern void osfile_entry(void);
@@ -147,6 +152,13 @@ struct osfile_control {
     unsigned long execution;
     unsigned long length;
     unsigned long attributes;
+};
+
+struct osgbpb_control {
+    unsigned char handle;
+    unsigned long address;
+    unsigned long count;
+    unsigned long pointer;
 };
 
 #endif /* _SWROM_H_ */
