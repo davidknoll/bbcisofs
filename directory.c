@@ -22,12 +22,12 @@ static unsigned char matchdirent(struct isodirent *dirent, const unsigned char *
     // Special case: . (PC/Linux) or @ (BBC) or \0 (ISO)
     if (
         dirent->namelen == 0x01 && dirent->name[0] == 0x00 &&
-        name[0] == '@' && name[1] < ' '
+        name[0] == '@' && name[1] <= ' '
     ) { return 1; }
     // Special case: .. (PC/Linux) or ^ (BBC) or \1 (ISO)
     if (
         dirent->namelen == 0x01 && dirent->name[0] == 0x01 &&
-        name[0] == '^' && name[1] < ' '
+        name[0] == '^' && name[1] <= ' '
     ) { return 1; }
 
     // Don't care about the version number suffix
@@ -36,7 +36,7 @@ static unsigned char matchdirent(struct isodirent *dirent, const unsigned char *
         // We have a character here from the directory entry, but no more
         // characters in the provided name, therefore the names are different
         // lengths, therefore they don't match
-        if (namechar < ' ') { return 0; }
+        if (namechar <= ' ') { return 0; }
 
         // Translate certain characters between BBC and non-BBC filenames
         switch (namechar) {
@@ -52,8 +52,10 @@ static unsigned char matchdirent(struct isodirent *dirent, const unsigned char *
         idx++;
     }
 
-    if (name[idx] < ' ') { return 1; } // Successful match
-    return 0;                          // More chars left in provided name
+    // Successful match; all chars match and same length
+    if (name[idx] <= ' ') { return 1; }
+    // There are more chars left in provided name
+    return 0;
 }
 
 // Load the sector with the given LBA from the current drive into the directory sector buffer
@@ -141,6 +143,15 @@ struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name)
     return 0;
 }
 
+// Load the PVD into the directory sector buffer
+// and return a pointer to the root directory entry, or null on error
+struct isodirent *loadrootdir(void)
+{
+    if (loaddirsec(16)) { return 0; }
+    return (struct isodirent *) (dirsecbuf + 156);
+}
+
+// Test loading a directory and picking a name out of it
 void dirtest(void)
 {
     struct isodirent *rootent, *foundent;

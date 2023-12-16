@@ -46,6 +46,16 @@ static unsigned char cmdmatch(const struct regs *regs, const char *cmd)
     }
 }
 
+// Assemble a BRK instruction with an error message in the stack space and execute it
+void brk_error(unsigned char num, const unsigned char *msg)
+{
+    unsigned char *stk = (unsigned char *) 0x0100;
+    stk[0] = 0x00;        // BRK opcode
+    stk[1] = num;         // Error number
+    strcpy(stk + 2, msg); // Error message, null-terminated
+    ((void (*)(void)) stk)();
+}
+
 // Eject/load the disc
 static void eject(void)
 {

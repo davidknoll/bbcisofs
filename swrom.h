@@ -70,6 +70,7 @@ extern void outhb(unsigned char b);
 extern void outhw(unsigned int w);
 extern void hexdump(const void *ptr, unsigned int len);
 extern void outstr(const char *str);
+extern void brk_error(unsigned char num, const unsigned char *msg);
 
 /* OSWORD layer */
 extern int handle_osword(unsigned char func, void *params);
@@ -118,6 +119,7 @@ extern unsigned char current_drive;
 extern unsigned char current_directory[33 + 31];
 
 extern struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name);
+extern struct isodirent *loadrootdir(void);
 extern void dirtest(void);
 
 /* Filing system vectors */
@@ -138,5 +140,13 @@ extern unsigned long osfsc_handler(unsigned long axy);
 extern void fs_install(void);
 
 #define FS_NO 37
+
+struct osfile_control {
+    unsigned char *filename;
+    unsigned long load;
+    unsigned long execution;
+    unsigned long length;
+    unsigned long attributes;
+};
 
 #endif /* _SWROM_H_ */
