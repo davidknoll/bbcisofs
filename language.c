@@ -3,7 +3,7 @@
 #include "swrom.h"
 
 // Calls OSCLI
-static void oscli(const char *cmd)
+static void oscli(const unsigned char *cmd)
 {
     struct regs osregs;
     memset(&osregs, 0, sizeof osregs);

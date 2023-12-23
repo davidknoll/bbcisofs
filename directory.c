@@ -1,8 +1,6 @@
-#include <6502.h>
 #include <ctype.h>
 #include "swrom.h"
 
-static unsigned char dirsecbuf[SECTOR_SIZE];
 unsigned char current_drive = 1;
 unsigned char current_directory[33 + 31];
 // unsigned char library_drive = 1;
@@ -58,47 +56,13 @@ static unsigned char matchdirent(struct isodirent *dirent, const unsigned char *
     return 0;
 }
 
-// Load the sector with the given LBA from the current drive into the directory sector buffer
-static unsigned char loaddirsec(unsigned long lba)
-{
-    struct osword_control oswdata;
-    struct osword_error oswerr;
-    struct regs oswregs;
-    if (current_drive > 3) { return -1; }
-
-    // Construct a command packet
-    oswdata.controller = current_drive >> 1;
-    oswdata.address = 0xFFFF0000 | (unsigned int) dirsecbuf;
-    oswdata.cmd_opcode = 0x08; // READ(6)
-    oswdata.cmd_lba[0] = ((current_drive << 5) & 0x20) | ((lba >> 16) & 0x1F);
-    oswdata.cmd_lba[1] = lba >> 8;
-    oswdata.cmd_lba[2] = lba;
-    oswdata.cmd_count = 1;
-    oswdata.cmd_unused = 0;
-    oswdata.length = sizeof dirsecbuf;
-
-    oswregs.a = 0x26; // Access the disc controller
-    oswregs.x = ((unsigned int) &oswdata);
-    oswregs.y = ((unsigned int) &oswdata) >> 8;
-    oswregs.flags = 0;
-    oswregs.pc = OSWORD;
-    _sys(&oswregs);
-
-    // Request sense on error, mostly to clear the flag
-    if (oswdata.controller > 0) {
-        oswregs.a = 0x27; // Read last error information
-        oswregs.x = ((unsigned int) &oswerr);
-        oswregs.y = ((unsigned int) &oswerr) >> 8;
-        _sys(&oswregs);
-    }
-    return oswdata.controller;
-}
-
 // Find a directory entry bearing the given name, within the loaded directory sector
-static struct isodirent *finddirent(const unsigned char *name)
+static struct isodirent *finddirent(unsigned char *dirsecbuf, const unsigned char *name)
 {
     struct isodirent *curdirent = (struct isodirent *) dirsecbuf;
-    while (curdirent < (struct isodirent *) (dirsecbuf + sizeof dirsecbuf)) {
+    struct isodirent *enddirent = (struct isodirent *) (dirsecbuf + SECTOR_SIZE);
+
+    while (curdirent < enddirent) {
         // End of list; not found at least in this sector
         if (curdirent->direntlen == 0) { break; }
         // Success
@@ -116,20 +80,14 @@ struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name)
 {
     unsigned long lba = dirent->lba_l;
     unsigned long size = dirent->size_l;
+    unsigned char *dirsecbuf;
     struct isodirent *result;
 
     while (size > 0) {
-        // Try 3 times to load the directory sector
-        if (loaddirsec(lba) != 0) {
-            if (loaddirsec(lba) != 0) {
-                if (loaddirsec(lba) != 0) {
-                    return 0;
-                }
-            }
-        }
+        dirsecbuf = cachesector(current_drive, lba);
 
         // Scan it for a matching entry
-        result = finddirent(name);
+        result = finddirent(dirsecbuf, name);
         if (result != 0) { return result; }
 
         // Next sector?
@@ -147,14 +105,8 @@ struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name)
 // and return a pointer to the root directory entry, or null on error
 struct isodirent *loadrootdir(void)
 {
-    // Try 3 times to load the PVD
-    if (loaddirsec(16) != 0) {
-        if (loaddirsec(16) != 0) {
-            if (loaddirsec(16) != 0) {
-                return 0;
-            }
-        }
-    }
+    unsigned char *dirsecbuf = cachesector(current_drive, 16);
+    if (!dirsecbuf) { return 0; }
     return (struct isodirent *) (dirsecbuf + 156);
 }
 
@@ -162,15 +114,19 @@ struct isodirent *loadrootdir(void)
 // and return a pointer to the volume identifier, or null on error
 unsigned char *loadtitle(void)
 {
-    // Try 3 times to load the PVD
-    if (loaddirsec(16) != 0) {
-        if (loaddirsec(16) != 0) {
-            if (loaddirsec(16) != 0) {
-                return 0;
-            }
+    unsigned char *dirsecbuf = cachesector(current_drive, 16);
+    unsigned char unpad = 32;
+    if (!dirsecbuf) { return 0; }
+
+    dirsecbuf += 40;
+    while (unpad--) {
+        if (dirsecbuf[unpad] == ' ') {
+            dirsecbuf[unpad] = '\0';
+        } else {
+            break;
         }
     }
-    return dirsecbuf + 40;
+    return dirsecbuf;
 }
 
 #ifdef DEBUG
@@ -179,14 +135,8 @@ void dirtest(void)
 {
     struct isodirent *rootent, *foundent;
 
-    // Read PVD
-    unsigned char rtn = loaddirsec(16);
-    outstr("read pvd rtn ");
-    outhb(rtn);
-    outstr("\n");
-
     // Dump root dir entry
-    rootent = (struct isodirent *) (dirsecbuf + 156);
+    rootent = loadrootdir();
     outstr("root ent ");
     outhw((unsigned int) rootent);
     outstr("\n");

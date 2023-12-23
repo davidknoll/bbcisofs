@@ -1,10 +1,13 @@
 #include <6502.h>
 #include <string.h>
 #include "swrom.h"
+#define XVECENT(n) ((void (*)(void)) (0xFF00 + (3 * (n))))
 
 static unsigned char __fastcall__ (*osrdch)(void) = (void *) OSRDCH;
 static void __fastcall__ (*oswrch)(unsigned char c) = (void *) OSWRCH;
+static void __fastcall__ (*osnewl)(void) = (void *) OSNEWL;
 
+// Load a file's metadata and/or data into memory
 static int loadfileattr(unsigned long axy)
 {
     struct osword_control oswdata;
@@ -13,6 +16,7 @@ static int loadfileattr(unsigned long axy)
     struct isodirent *dirent;
     struct osfile_control *params = (struct osfile_control *) (axy >> 8);
 
+    // Find the directory entry
     if (current_drive > 3) { return -1; }    // Error: invalid drive
     dirent = loadrootdir();
     if (dirent == 0) { return -2; }          // Error: couldn't load root dir entry / PVD
@@ -61,8 +65,6 @@ static int loadfileattr(unsigned long axy)
 
 unsigned long osfile_handler(unsigned long axy)
 {
-    struct osfile_control *params = (struct osfile_control *) (axy >> 8);
-
     switch (axy & 0xFF) {
     case 0xFF: // Load file
         axy &= ~0xFF;
@@ -160,20 +162,107 @@ unsigned long osbput_handler(unsigned long axy)
     return axy;
 }
 
+// OSGBPB function 5
+static void readtitleoption(struct osgbpb_control *params)
+{
+    unsigned char *title = loadtitle();
+    unsigned char titlelen = strlen(title);
+    if (title == 0) { brk_error(0xD3, "Bad or no disc"); }
+
+    // Will it fit in the space available?
+    if (params->count < 3) {
+        titlelen = 0;
+    } else if (params->count - 3 < titlelen) {
+        titlelen = params->count - 3;
+    }
+
+    if (params->count) {
+        *((unsigned char *) params->address++) = titlelen;
+        params->count--;
+    }
+    if (params->count) {
+        memcpy((unsigned char *) params->address, title, titlelen);
+        params->address += titlelen;
+        params->count -= titlelen;
+    }
+    if (params->count) {
+        *((unsigned char *) params->address++) = 0; // Boot option
+        params->count--;
+    }
+    if (params->count) {
+        *((unsigned char *) params->address++) = current_drive;
+        params->count--;
+    }
+}
+
+// Part of OSGBPB function 8
+static void appendname(struct osgbpb_control *params, struct isodirent *dirent)
+{
+    // TODO filename character translation
+    unsigned char *oldaddr = (unsigned char *) params->address++;
+    while (*oldaddr < dirent->namelen) {
+        if (dirent->name[*oldaddr] == ';') { break; }
+        *((unsigned char *) params->address++) = dirent->name[(*oldaddr)++];
+    }
+}
+
+// OSGBPB function 8
+static void readfilenames(struct osgbpb_control *params)
+{
+    unsigned int dirsec = params->pointer >> 16;
+    unsigned int diroff = params->pointer;
+    struct isodirent *parent = loadrootdir();
+    struct isodirent *current;
+    unsigned long lba = parent->lba_l;
+    unsigned long size = parent->size_l;
+    if (parent == 0) { brk_error(0xC7, "Drive error"); }
+
+    while (params->count) {
+        // We've come to the actual end of a directory sector
+        if (diroff >= SECTOR_SIZE) {
+            dirsec++;
+            diroff = 0;
+        }
+
+        // End of the directory listing; there are no more names to read
+        if (((dirsec * SECTOR_SIZE) + diroff) >= size) { break; }
+
+        // Get the directory entry pointed to
+        current = (struct isodirent *) cachesector(current_drive, lba + dirsec);
+        if (current == 0) { brk_error(0xC7, "Drive error"); }
+        current = (struct isodirent *) (((unsigned char *) current) + diroff);
+
+        // We've come to padding at the end of a directory sector,
+        // where a directory entry cannot cross a sector boundary
+        if (current->direntlen == 0) {
+            dirsec++;
+            diroff = 0;
+            continue;
+        }
+
+        // Copy the filename, advance to next entry
+        params->count--;
+        appendname(params, current);
+        diroff += current->direntlen;
+    }
+
+    params->handle = 0; // Cycle number, we don't really have that here
+    params->pointer = (((unsigned long) dirsec) << 16) | diroff;
+}
+
 unsigned long osgbpb_handler(unsigned long axy)
 {
     struct osgbpb_control *params = (struct osgbpb_control *) (axy >> 8);
-    unsigned char *title;
-    unsigned char *titlelen = (unsigned char *) params->address;
 
     switch (axy & 0xFF) {
     case 0x01: // Write bytes to file at specified pointer
     case 0x02: // Write bytes to file at current pointer
         if (params->handle) { brk_error(0xDE, "Not open"); }
         axy &= ~0xFF;
-        while (params->count--) {
+        while (params->count) {
             oswrch(*((unsigned char *) (params->address++)));
             params->pointer++;
+            params->count--;
         }
         break;
 
@@ -181,39 +270,16 @@ unsigned long osgbpb_handler(unsigned long axy)
     case 0x04: // Read bytes from file at current pointer
         if (params->handle) { brk_error(0xDE, "Not open"); }
         axy &= ~0xFF;
-        while (params->count--) {
+        while (params->count) {
             *((unsigned char *) (params->address++)) = osrdch();
             params->pointer++;
+            params->count--;
         }
         break;
 
     case 0x05: // Read title and option from current drive
-        title = loadtitle();
-        if (title == 0) { brk_error(0xD3, "Bad or no disc"); }
         axy &= ~0xFF;
-
-        // Length of title
-        if (params->count == 0) { break; }
-        *titlelen = 0;
-        params->address++;
-        params->count--;
-
-        // Title
-        while (*titlelen < 32 && title[*titlelen] > ' ') {
-            if (params->count) {
-                *((unsigned char *) (params->address++)) = title[*titlelen];
-                params->count--;
-            }
-            (*titlelen)++;
-        }
-
-        // Boot option, drive number
-        if (params->count == 0) { break; }
-        *((unsigned char *) (params->address++)) = 0;
-        params->count--;
-        if (params->count == 0) { break; }
-        *((unsigned char *) (params->address++)) = current_drive;
-        params->count--;
+        readtitleoption(params);
         break;
 
     case 0x06: // Read current drive and directory names
@@ -221,24 +287,29 @@ unsigned long osgbpb_handler(unsigned long axy)
         axy &= ~0xFF;
 
         // Drive number, as a string
-        if (params->count == 0) { break; }
-        *((unsigned char *) (params->address++)) = 1;
-        params->count--;
-        if (params->count == 0) { break; }
-        *((unsigned char *) (params->address++)) = '0' + current_drive;
-        params->count--;
+        if (params->count) {
+            *((unsigned char *) (params->address++)) = 1;
+            params->count--;
+        }
+        if (params->count) {
+            *((unsigned char *) (params->address++)) = '0' + current_drive;
+            params->count--;
+        }
 
         // Directory name, as a string
-        if (params->count == 0) { break; }
-        *((unsigned char *) (params->address++)) = 1;
-        params->count--;
-        if (params->count == 0) { break; }
-        *((unsigned char *) (params->address++)) = '$';
-        params->count--;
+        if (params->count) {
+            *((unsigned char *) (params->address++)) = 1;
+            params->count--;
+        }
+        if (params->count) {
+            *((unsigned char *) (params->address++)) = '$';
+            params->count--;
+        }
         break;
 
     case 0x08: // Read file names from the current directory
         axy &= ~0xFF;
+        readfilenames(params);
         break;
     }
     return axy;
@@ -261,7 +332,208 @@ unsigned long osfind_handler(unsigned long axy)
     return axy;
 }
 
-unsigned long osfsc_handler(unsigned long axy) { return axy; }
+// Part of FSCV functions 5 & 9
+static void catheader(void)
+{
+    struct osgbpb_control gbpb;
+    unsigned char buf[40];
+    unsigned char i;
+
+    gbpb.address = 0xFFFF0000 | (unsigned int) buf;
+    gbpb.count = sizeof buf;
+    osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x05);
+    for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
+    outstr("\nDrive ");
+    outhn(buf[buf[0] + 2]);
+    for (i = 0; i < 13; i++) { oswrch(' '); }
+    outstr("Option ");
+    outhn(buf[buf[0] + 1]);
+
+    gbpb.address = 0xFFFF0000 | (unsigned int) buf;
+    gbpb.count = sizeof buf;
+    osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x06);
+    outstr("\nDir. :");
+    for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
+    oswrch('.');
+    for (i = 0; i < buf[buf[0] + 1]; i++) { oswrch(buf[buf[0] + 2 + i]); }
+    for (i = 0; i < (13 - (buf[0] + buf[buf[0] + 1])); i++) { oswrch(' '); }
+
+    gbpb.address = 0xFFFF0000 | (unsigned int) buf;
+    gbpb.count = sizeof buf;
+    osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x07);
+    outstr("Lib. :");
+    for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
+    oswrch('.');
+    for (i = 0; i < buf[buf[0] + 1]; i++) { oswrch(buf[buf[0] + 2 + i]); }
+    osnewl();
+    osnewl();
+}
+
+// Part of FSCV function 5
+static void catnames(void)
+{
+    struct osgbpb_control gbpb;
+    unsigned char buf[40];
+    unsigned char i;
+    gbpb.handle = 0;
+    gbpb.pointer = 0;
+
+    do {
+        gbpb.address = 0xFFFF0000 | (unsigned int) buf;
+        gbpb.count = 1;
+        osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x08);
+        if (gbpb.count == 0) {
+            for (i = 0; i < 4; i++) { oswrch(' '); }
+            for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
+            osnewl();
+        }
+    } while (gbpb.count == 0);
+}
+
+// Part of FSCV functions 9 & 10
+static void infoname(unsigned char *name)
+{
+    struct osfile_control attrs;
+    unsigned char i, ft;
+
+    attrs.filename = name;
+    ft = osfile_handler((((unsigned int) &attrs) << 8) | 0x05);
+    if (ft == 0) { brk_error(0xD6, "Not found"); }
+    for (i = 0; attrs.filename[i] > ' '; i++) { oswrch(attrs.filename[i]); }
+    for (; i < 32; i++) { oswrch(' '); }
+
+    // Is the permissions stuff even needed?
+    oswrch((ft == 2) ? 'D' : ' ');
+    oswrch((attrs.attributes & 0x08) ? 'L' : '-');
+    oswrch((attrs.attributes & 0x04) ? 'E' : '-');
+    oswrch((attrs.attributes & 0x02) ? 'W' : '-');
+    oswrch((attrs.attributes & 0x01) ? 'R' : '-');
+    oswrch('/');
+    oswrch((attrs.attributes & 0x80) ? 'l' : '-');
+    oswrch((attrs.attributes & 0x40) ? 'e' : '-');
+    oswrch((attrs.attributes & 0x20) ? 'w' : '-');
+    oswrch((attrs.attributes & 0x10) ? 'r' : '-');
+
+    // And to add the start sector we'd need the actual directory entry
+    oswrch(' ');
+    oswrch(' ');
+    outhl(attrs.load);
+    oswrch(' ');
+    oswrch(' ');
+    outhl(attrs.execution);
+    oswrch(' ');
+    oswrch(' ');
+    outhl(attrs.length);
+    osnewl();
+}
+
+// Part of FSCV function 9
+static void exnames(void)
+{
+    struct osgbpb_control gbpb;
+    unsigned char buf[40];
+    gbpb.handle = 0;
+    gbpb.pointer = 0;
+
+    do {
+        gbpb.address = 0xFFFF0000 | (unsigned int) buf;
+        gbpb.count = 1;
+        osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x08);
+        if (gbpb.count == 0) {
+            buf[buf[0] + 1] = '\0';
+            infoname(buf + 1);
+        }
+    } while (gbpb.count == 0);
+}
+
+// FSCV functions 2, 3, 4, 11
+static void starrun(unsigned char *name)
+{
+    struct regs regs;
+    struct osfile_control osf;
+    osf.filename = name;
+    osfile_handler((((unsigned int) &osf) << 8) | 0x05);
+
+    // Find the command line tail
+    while (*name == ' ') { name++; }
+    while (*name > ' ') { name++; }
+    while (*name == ' ') { name++; }
+    *((unsigned char **) 0xF2) = name;
+
+    if (osf.execution == 0xFFFFFFFF) {
+        // *EXEC it
+        brk_error(0xFF, "Unimplemented");
+    } else if (osf.load == 0xFFFFFFFF) {
+        brk_error(0x93, "Won't");
+    } else {
+        // Load and execute it
+        memset(&regs, 0, sizeof regs);
+        regs.pc = osf.execution;
+        osf.execution = 0;
+        osfile_handler((((unsigned int) &osf) << 8) | 0xFF);
+        _sys(&regs);
+    }
+}
+
+unsigned long osfsc_handler(unsigned long axy)
+{
+    unsigned char *params = (unsigned char *) (axy >> 8);
+
+    switch (axy & 0xFF) {
+    case 0x00: // *OPT
+        if ((axy & 0x0000FF00) == 0x00000400) { brk_error(0xC9, "Read only"); }
+        break;
+
+    case 0x01: // EOF #
+        axy &= ~0xFF;
+        if (axy & 0x0000FF00) { brk_error(0xDE, "Not open"); }
+        break;
+
+    case 0x02: // */command
+    case 0x03: // *command
+    case 0x04: // *RUN command
+    case 0x0B: // *RUN command from library
+        axy &= ~0xFF;
+        starrun(params);
+        break;
+
+    case 0x05: // *CAT
+        // Only supports current directory
+        axy &= ~0xFF;
+        catheader();
+        catnames();
+        break;
+
+    case 0x06: // New filing system about to take over
+    case 0x08: // *command being processed
+        // Do nothing, but return indicating function is supported
+        axy &= ~0xFF;
+        break;
+
+    case 0x07: // File handle range
+        axy = 0x005F5A00; // 5Ah to 5Fh
+        break;
+
+    case 0x09: // *EX
+        // Only supports current directory
+        axy &= ~0xFF;
+        catheader();
+        exnames();
+        break;
+
+    case 0x0A: // *INFO
+        // Does not yet support wildcards
+        axy &= ~0xFF;
+        infoname(params);
+        break;
+
+    case 0x0C: // *RENAME
+        axy &= ~0xFF;
+        brk_error(0xC9, "Read only");
+        break;
+    }
+    return axy;
+}
 
 void fs_install(void)
 {
@@ -300,13 +572,13 @@ void fs_install(void)
     extvectors[14].rom = rom;
     extvectors[15].rom = rom;
 
-    vectors[ 9] = (void (*)(void)) (0xFF00 + (3 *  9)); // FILEV
-    vectors[10] = (void (*)(void)) (0xFF00 + (3 * 10)); // ARGSV
-    vectors[11] = (void (*)(void)) (0xFF00 + (3 * 11)); // BGETV
-    vectors[12] = (void (*)(void)) (0xFF00 + (3 * 12)); // BPUTV
-    vectors[13] = (void (*)(void)) (0xFF00 + (3 * 13)); // GBPBV
-    vectors[14] = (void (*)(void)) (0xFF00 + (3 * 14)); // FINDV
-    vectors[15] = (void (*)(void)) (0xFF00 + (3 * 15)); // FSCV
+    vectors[ 9] = XVECENT( 9); // FILEV -> XFILEV
+    vectors[10] = XVECENT(10); // ARGSV -> XARGSV
+    vectors[11] = XVECENT(11); // BGETV -> XBGETV
+    vectors[12] = XVECENT(12); // BPUTV -> XBPUTV
+    vectors[13] = XVECENT(13); // GBPBV -> XGBPBV
+    vectors[14] = XVECENT(14); // FINDV -> XFINDV
+    vectors[15] = XVECENT(15); // FSCV  -> XFSCV
 
     CLI();
 

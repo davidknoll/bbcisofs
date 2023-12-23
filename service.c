@@ -3,26 +3,10 @@
 #include <string.h>
 #include "swrom.h"
 
-static void __fastcall__ (*oswrch)(unsigned char c) = (void *) OSWRCH;
-static void __fastcall__ (*osnewl)(void) = (void *) OSNEWL;
-
-// Output a string, accounting for UNIX line endings
-void outstr(const char *str)
-{
-    while (*str) {
-        if (*str == '\n') {
-            osnewl();
-        } else {
-            oswrch(*str);
-        }
-        str++;
-    }
-}
-
 // Perform a case-insensitive comparison of a word on the command line
-static unsigned char cmdmatch(const struct regs *regs, const char *cmd)
+static unsigned char cmdmatch(const struct regs *regs, const unsigned char *cmd)
 {
-    const char *cmdline = *((char **) 0xF2);
+    const unsigned char *cmdline = *((char **) 0xF2);
     unsigned char y = regs->y, i = 0;
 
     while (1) {

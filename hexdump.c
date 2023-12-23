@@ -1,4 +1,3 @@
-#ifdef DEBUG
 #include "swrom.h"
 
 static void __fastcall__ (*oswrch)(unsigned char c) = (void *) OSWRCH;
@@ -26,6 +25,13 @@ void outhw(unsigned int w)
   outhb(w);
 }
 
+void outhl(unsigned long l)
+{
+  outhw(l >> 8);
+  outhw(l);
+}
+
+#ifdef DEBUG
 static void dumprow(const unsigned char *ptr)
 {
   unsigned char c, i;
@@ -64,3 +70,16 @@ void hexdump(const void *ptr, unsigned int len)
   }
 }
 #endif /* DEBUG */
+
+// Output a string, accounting for UNIX line endings
+void outstr(const unsigned char *str)
+{
+    while (*str) {
+        if (*str == '\n') {
+            osnewl();
+        } else {
+            oswrch(*str);
+        }
+        str++;
+    }
+}

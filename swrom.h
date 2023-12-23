@@ -65,13 +65,14 @@ extern void idereset(void);
 #define SECTOR_SIZE 2048
 
 /* For debugging */
-#ifdef DEBUG
 extern void outhn(unsigned char n);
 extern void outhb(unsigned char b);
 extern void outhw(unsigned int w);
+extern void outhl(unsigned long l);
+#ifdef DEBUG
 extern void hexdump(const void *ptr, unsigned int len);
 #endif /* DEBUG */
-extern void outstr(const char *str);
+extern void outstr(const unsigned char *str);
 extern void brk_error(unsigned char num, const unsigned char *msg);
 
 /* OSWORD layer */
@@ -117,6 +118,58 @@ struct isodirent {
     unsigned char name[];
 };
 
+struct dec_datetime {
+    unsigned char year[4];
+    unsigned char month[2];
+    unsigned char day[2];
+    unsigned char hour[2];
+    unsigned char minute[2];
+    unsigned char second[2];
+    unsigned char csec[2];
+    unsigned char tzoffset;
+};
+
+struct isopvd {
+    unsigned char type;
+    unsigned char standard[5];
+    unsigned char version;
+    unsigned char _unused1;
+    unsigned char system[32];
+    unsigned char volume[32];
+    unsigned char _unused2[8];
+    unsigned long vol_sz_l;
+    unsigned long vol_sz_m;
+    unsigned char _unused3[32];
+    unsigned int volset_sz_l;
+    unsigned int volset_sz_m;
+    unsigned int volseq_l;
+    unsigned int volseq_m;
+    unsigned int blk_sz_l;
+    unsigned int blk_sz_m;
+    unsigned long ptbl_sz_l;
+    unsigned long ptbl_sz_m;
+    unsigned long ptbl_lba_l;
+    unsigned long optbl_lba_l;
+    unsigned long ptbl_lba_m;
+    unsigned long optbl_lba_m;
+    unsigned char rootdir[34];
+    unsigned char volset[128];
+    unsigned char publisher[128];
+    unsigned char preparer[128];
+    unsigned char application[128];
+    unsigned char copyright[37];
+    unsigned char abstract[37];
+    unsigned char biblio[37];
+    struct dec_datetime t_creation;
+    struct dec_datetime t_modification;
+    struct dec_datetime t_expiration;
+    struct dec_datetime t_effective;
+    unsigned char fstructver;
+    unsigned char _unused4;
+    unsigned char app_use[512];
+    unsigned char _reserved[653];
+};
+
 extern unsigned char current_drive;
 extern unsigned char current_directory[33 + 31];
 
@@ -126,6 +179,8 @@ extern unsigned char *loadtitle(void);
 #ifdef DEBUG
 extern void dirtest(void);
 #endif /* DEBUG */
+
+extern unsigned char *cachesector(unsigned char device, unsigned long lba);
 
 /* Filing system vectors */
 extern void osfile_entry(void);
