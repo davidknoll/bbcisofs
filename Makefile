@@ -1,4 +1,5 @@
-OBJS = crt0.o atapi.o directory.o fs.o hexdump.o language.o osword.o seccache.o service.o
+OBJS = crt0.o atapi.o directory.o fs.o hexdump.o osword.o seccache.o service.o
+CL65FLAGS = -Os
 
 .PHONY: all clean
 all: cdfs.rom
@@ -9,7 +10,7 @@ cdfs.rom: swrom.cfg $(OBJS)
 	ld65 -C swrom.cfg -m cdfs.map -o cdfs.rom $(OBJS) --lib none.lib
 
 %.o: %.c swrom.h
-	cl65 -Os -t none -c $< -o $@
+	cl65 $(CL65FLAGS) -t none -c $< -o $@
 
 %.o: %.s
-	cl65 -t none -c $< -o $@
+	cl65 $(CL65FLAGS) -t none -c $< -o $@

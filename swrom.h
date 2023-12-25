@@ -2,7 +2,6 @@
 #define _SWROM_H_
 
 /* Sideways ROM entry points */
-extern void __fastcall__ language(struct regs *regs);
 extern void __fastcall__ service(struct regs *regs);
 
 /* MOS calls */

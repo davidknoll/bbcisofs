@@ -27,7 +27,7 @@ void outhw(unsigned int w)
 
 void outhl(unsigned long l)
 {
-  outhw(l >> 8);
+  outhw(l >> 16);
   outhw(l);
 }
 

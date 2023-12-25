@@ -2,7 +2,7 @@
         .export __STARTUP__ : absolute = 1      ; Mark as startup
         .import zerobss
         .import initlib, donelib
-        .import _language, _service
+        .import _service
         .import __STACKSTART__                  ; Linker generated
 
         .export _osfile_entry, _osargs_entry, _osbget_entry, _osbput_entry
@@ -15,36 +15,13 @@
 
 ; Sideways ROM header
         .segment "STARTUP"
-        jmp langent                             ; Language entry
+        .byte 0, 0, 0                           ; No language entry
         jmp svcent                              ; Service entry
         .byte $82                               ; Type (service, 6502)
         .byte <copy-1                           ; Copyright string pointer
         .byte $00                               ; Binary version number (shown in *ROMS)
 title:  .asciiz "CD-ROM Filing System"          ; Title string (shown in *ROMS and on entering language)
 copy:   .asciiz "(C) David Knoll"               ; Copyright string (no version string)
-
-; Language entry
-langent:
-        php                                     ; Save all register data for the use of the C code
-        sei
-        cld
-        sta regsv+0
-        stx regsv+1
-        sty regsv+2
-        pla
-        sta regsv+3
-        tsx                                     ; Save SP in case of abnormal exit
-        stx spsave
-        lda #<regsv                             ; language(regsv);
-        ldx #>regsv
-        jsr _language
-        lda regsv+3                             ; Set up returned register state
-        pha
-        ldy regsv+2
-        ldx regsv+1
-        lda regsv+0
-        plp
-        rts
 
 ; Service entry
 svcent: php                                     ; Save all register data for the use of the C code
