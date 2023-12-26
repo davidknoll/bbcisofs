@@ -31,6 +31,9 @@ struct extended_vector {
     unsigned char rom;
 };
 
+extern volatile unsigned char workspace_is_mine;
+extern void *get_private(void);
+
 /* I/O ports for J.G.Harston & Sprow's 16-bit IDE interface */
 struct ide_interface {
     volatile unsigned char data_lo;

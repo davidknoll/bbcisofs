@@ -1,7 +1,7 @@
 #include <6502.h>
 #include "swrom.h"
 
-static unsigned char secbuf[SECTOR_SIZE];
+extern unsigned char secbuf[SECTOR_SIZE];
 static unsigned char secbufdev = 0xFF;
 static unsigned long secbuflba;
 
@@ -12,6 +12,7 @@ static unsigned char *cachesector_aux(unsigned char device, unsigned long lba)
     struct osword_error oswerr;
     struct regs oswregs;
     if (device > 3) { return 0; }
+    if (!workspace_is_mine) { return 0; }
     if (device == secbufdev && lba == secbuflba) { return secbuf; }
 
     // Construct a command packet

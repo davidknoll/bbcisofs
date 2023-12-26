@@ -9,6 +9,7 @@
         .export _osgbpb_entry, _osfind_entry, _osfsc_entry
         .import _osfile_handler, _osargs_handler, _osbget_handler, _osbput_handler
         .import _osgbpb_handler, _osfind_handler, _osfsc_handler
+        .export _secbuf
 
         .importzp sp, sreg
         .include "zeropage.inc"
@@ -128,3 +129,6 @@ _osfsc_entry:
         .segment "DATA"
 spsave: .res 1                                  ; Save 6502 SP on entry
 regsv:  .res 6                                  ; Size of a struct regs
+
+        .segment "SHARED"
+_secbuf: .res 2048                              ; Directory sector buffer

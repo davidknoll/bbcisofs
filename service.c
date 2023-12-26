@@ -3,6 +3,11 @@
 #include <string.h>
 #include "swrom.h"
 
+// Details of the shared absolute workspace segment
+extern void _SHARED_RUN__;
+extern void _SHARED_SIZE__;
+volatile unsigned char workspace_is_mine;
+
 // Perform a case-insensitive comparison of a word on the command line
 static unsigned char cmdmatch(const struct regs *regs, const unsigned char *cmd)
 {
@@ -77,10 +82,28 @@ static void cdtest3(void)
 }
 #endif /* DEBUG */
 
+// Get the address of our private workspace
+void *get_private(void)
+{
+    return (void *) (((unsigned char *) 0x0DF0)[*((unsigned char *) 0xF4)] << 8);
+}
+
 // Service ROM entry point (instead of main)
 void __fastcall__ service(struct regs *regs)
 {
+    unsigned int wkend;
+
     switch (regs->a) {
+    case 0x01: // Request absolute workspace
+        wkend = (unsigned int) &_SHARED_RUN__ + (unsigned int) &_SHARED_SIZE__;
+        if (wkend & 0xFF) { wkend += 0x100; }
+        if (regs->y < (wkend >> 8)) { regs->y = (wkend >> 8); }
+        break;
+
+    case 0x02: // Request private workspace
+        ((unsigned char *) 0x0DF0)[regs->x] = regs->y++;
+        break;
+
     case 0x04: // *command
         if (cmdmatch(regs, "CDFS")) {
             fs_install();
@@ -133,6 +156,10 @@ void __fastcall__ service(struct regs *regs)
             outstr("\nCD-ROM Filing System\n");
             outstr("  CDFS\n");
         }
+        break;
+
+    case 0x0A: // Absolute workspace is being claimed
+        workspace_is_mine = 0;
         break;
 
     case 0x12: // Select filing system
