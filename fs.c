@@ -3,10 +3,6 @@
 #include "swrom.h"
 #define XVECENT(n) ((void (*)(void)) (0xFF00 + (3 * (n))))
 
-static unsigned char __fastcall__ (*osrdch)(void) = (void *) OSRDCH;
-static void __fastcall__ (*oswrch)(unsigned char c) = (void *) OSWRCH;
-static void __fastcall__ (*osnewl)(void) = (void *) OSNEWL;
-
 // Load a file's metadata and/or data into memory
 static int loadfileattr(unsigned long axy)
 {
@@ -15,9 +11,10 @@ static int loadfileattr(unsigned long axy)
     struct regs oswregs;
     struct isodirent *dirent;
     struct osfile_control *params = (struct osfile_control *) (axy >> 8);
+    unsigned char device = get_private()->current_drive;
 
     // Find the directory entry
-    if (current_drive > 3) { return -1; }    // Error: invalid drive
+    if (device > 3) { return -1; }           // Error: invalid drive
     dirent = loadrootdir();
     if (dirent == 0) { return -2; }          // Error: couldn't load root dir entry / PVD
     dirent = findfirst(dirent, params->filename);
@@ -36,10 +33,10 @@ static int loadfileattr(unsigned long axy)
 
     // Load data into memory based on LBA and size from the directory entry
     // Default load address, until we can read the .INF files
-    oswdata.controller = current_drive >> 1;
+    oswdata.controller = device >> 1;
     oswdata.address = (params->execution & 0xFF) ? 0xFFFF0E00 : params->load;
     oswdata.cmd_opcode = 0x08; // READ(6)
-    oswdata.cmd_lba[0] = ((current_drive << 5) & 0x20) | ((dirent->lba_l >> 16) & 0x1F);
+    oswdata.cmd_lba[0] = ((device << 5) & 0x20) | ((dirent->lba_l >> 16) & 0x1F);
     oswdata.cmd_lba[1] = dirent->lba_l >> 8;
     oswdata.cmd_lba[2] = dirent->lba_l;
     oswdata.cmd_count = 0; // Use the size in bytes
@@ -151,14 +148,14 @@ unsigned long osbget_handler(unsigned long axy)
 {
     if (axy & 0x00FF0000) { brk_error(0xDE, "Not open"); }
     axy &= ~0xFF;
-    axy |= osrdch();
+    axy |= _osrdch();
     return axy;
 }
 
 unsigned long osbput_handler(unsigned long axy)
 {
     if (axy & 0x00FF0000) { brk_error(0xDE, "Not open"); }
-    oswrch(axy & 0xFF);
+    _oswrch(axy & 0xFF);
     return axy;
 }
 
@@ -190,7 +187,7 @@ static void readtitleoption(struct osgbpb_control *params)
         params->count--;
     }
     if (params->count) {
-        *((unsigned char *) params->address++) = current_drive;
+        *((unsigned char *) params->address++) = get_private()->current_drive;
         params->count--;
     }
 }
@@ -228,7 +225,7 @@ static void readfilenames(struct osgbpb_control *params)
         if (((dirsec * SECTOR_SIZE) + diroff) >= size) { break; }
 
         // Get the directory entry pointed to
-        current = (struct isodirent *) cachesector(current_drive, lba + dirsec);
+        current = (struct isodirent *) cachesector(get_private()->current_drive, lba + dirsec);
         if (current == 0) { brk_error(0xC7, "Drive error"); }
         current = (struct isodirent *) (((unsigned char *) current) + diroff);
 
@@ -260,7 +257,7 @@ unsigned long osgbpb_handler(unsigned long axy)
         if (params->handle) { brk_error(0xDE, "Not open"); }
         axy &= ~0xFF;
         while (params->count) {
-            oswrch(*((unsigned char *) (params->address++)));
+            _oswrch(*((unsigned char *) (params->address++)));
             params->pointer++;
             params->count--;
         }
@@ -271,7 +268,7 @@ unsigned long osgbpb_handler(unsigned long axy)
         if (params->handle) { brk_error(0xDE, "Not open"); }
         axy &= ~0xFF;
         while (params->count) {
-            *((unsigned char *) (params->address++)) = osrdch();
+            *((unsigned char *) (params->address++)) = _osrdch();
             params->pointer++;
             params->count--;
         }
@@ -292,7 +289,7 @@ unsigned long osgbpb_handler(unsigned long axy)
             params->count--;
         }
         if (params->count) {
-            *((unsigned char *) (params->address++)) = '0' + current_drive;
+            *((unsigned char *) (params->address++)) = '0' + get_private()->current_drive;
             params->count--;
         }
 
@@ -342,10 +339,10 @@ static void catheader(void)
     gbpb.address = 0xFFFF0000 | (unsigned int) buf;
     gbpb.count = sizeof buf;
     osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x05);
-    for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
+    for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
     outstr("\nDrive ");
     outhn(buf[buf[0] + 2]);
-    for (i = 0; i < 13; i++) { oswrch(' '); }
+    for (i = 0; i < 13; i++) { _oswrch(' '); }
     outstr("Option ");
     outhn(buf[buf[0] + 1]);
 
@@ -353,20 +350,20 @@ static void catheader(void)
     gbpb.count = sizeof buf;
     osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x06);
     outstr("\nDir. :");
-    for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
-    oswrch('.');
-    for (i = 0; i < buf[buf[0] + 1]; i++) { oswrch(buf[buf[0] + 2 + i]); }
-    for (i = 0; i < (13 - (buf[0] + buf[buf[0] + 1])); i++) { oswrch(' '); }
+    for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
+    _oswrch('.');
+    for (i = 0; i < buf[buf[0] + 1]; i++) { _oswrch(buf[buf[0] + 2 + i]); }
+    for (i = 0; i < (13 - (buf[0] + buf[buf[0] + 1])); i++) { _oswrch(' '); }
 
     gbpb.address = 0xFFFF0000 | (unsigned int) buf;
     gbpb.count = sizeof buf;
     osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x07);
     outstr("Lib. :");
-    for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
-    oswrch('.');
-    for (i = 0; i < buf[buf[0] + 1]; i++) { oswrch(buf[buf[0] + 2 + i]); }
-    osnewl();
-    osnewl();
+    for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
+    _oswrch('.');
+    for (i = 0; i < buf[buf[0] + 1]; i++) { _oswrch(buf[buf[0] + 2 + i]); }
+    _osnewl();
+    _osnewl();
 }
 
 // Part of FSCV function 5
@@ -383,9 +380,9 @@ static void catnames(void)
         gbpb.count = 1;
         osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x08);
         if (gbpb.count == 0) {
-            for (i = 0; i < 4; i++) { oswrch(' '); }
-            for (i = 0; i < buf[0]; i++) { oswrch(buf[i + 1]); }
-            osnewl();
+            for (i = 0; i < 4; i++) { _oswrch(' '); }
+            for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
+            _osnewl();
         }
     } while (gbpb.count == 0);
 }
@@ -399,32 +396,32 @@ static void infoname(unsigned char *name)
     attrs.filename = name;
     ft = osfile_handler((((unsigned int) &attrs) << 8) | 0x05);
     if (ft == 0) { brk_error(0xD6, "Not found"); }
-    for (i = 0; attrs.filename[i] > ' '; i++) { oswrch(attrs.filename[i]); }
-    for (; i < 32; i++) { oswrch(' '); }
+    for (i = 0; attrs.filename[i] > ' '; i++) { _oswrch(attrs.filename[i]); }
+    for (; i < 32; i++) { _oswrch(' '); }
 
     // Is the permissions stuff even needed?
-    oswrch((ft == 2) ? 'D' : ' ');
-    oswrch((attrs.attributes & 0x08) ? 'L' : '-');
-    oswrch((attrs.attributes & 0x04) ? 'E' : '-');
-    oswrch((attrs.attributes & 0x02) ? 'W' : '-');
-    oswrch((attrs.attributes & 0x01) ? 'R' : '-');
-    oswrch('/');
-    oswrch((attrs.attributes & 0x80) ? 'l' : '-');
-    oswrch((attrs.attributes & 0x40) ? 'e' : '-');
-    oswrch((attrs.attributes & 0x20) ? 'w' : '-');
-    oswrch((attrs.attributes & 0x10) ? 'r' : '-');
+    _oswrch((ft == 2) ? 'D' : ' ');
+    _oswrch((attrs.attributes & 0x08) ? 'L' : '-');
+    _oswrch((attrs.attributes & 0x04) ? 'E' : '-');
+    _oswrch((attrs.attributes & 0x02) ? 'W' : '-');
+    _oswrch((attrs.attributes & 0x01) ? 'R' : '-');
+    _oswrch('/');
+    _oswrch((attrs.attributes & 0x80) ? 'l' : '-');
+    _oswrch((attrs.attributes & 0x40) ? 'e' : '-');
+    _oswrch((attrs.attributes & 0x20) ? 'w' : '-');
+    _oswrch((attrs.attributes & 0x10) ? 'r' : '-');
 
     // And to add the start sector we'd need the actual directory entry
-    oswrch(' ');
-    oswrch(' ');
+    _oswrch(' ');
+    _oswrch(' ');
     outhl(attrs.load);
-    oswrch(' ');
-    oswrch(' ');
+    _oswrch(' ');
+    _oswrch(' ');
     outhl(attrs.execution);
-    oswrch(' ');
-    oswrch(' ');
+    _oswrch(' ');
+    _oswrch(' ');
     outhl(attrs.length);
-    osnewl();
+    _osnewl();
 }
 
 // Part of FSCV function 9
@@ -587,4 +584,12 @@ void fs_install(void)
     regs.x = 0x0F;
     regs.pc = OSBYTE;
     _sys(&regs);
+
+    // Call service ROM function 0x0A to claim the absolute workspace
+    regs.a = 0x8F;
+    regs.x = 0x0A;
+    regs.pc = OSBYTE;
+    _sys(&regs);
+
+    get_private()->workspace_is_mine = 1;
 }

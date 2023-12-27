@@ -26,13 +26,35 @@ extern void __fastcall__ service(struct regs *regs);
 #define OSBYTE 0xFFF4
 #define OSCLI  0xFFF7
 
+#define _osrdch()  ((unsigned char __fastcall__ (*)(void)) OSRDCH)()
+#define _oswrch(c) ((void __fastcall__ (*)(unsigned char)) OSWRCH)(c)
+#define _osnewl()  ((void __fastcall__ (*)(void))          OSNEWL)()
+
 struct extended_vector {
     void (*vector)(void);
     unsigned char rom;
 };
 
-extern volatile unsigned char workspace_is_mine;
-extern void *get_private(void);
+struct private_workspace {
+    volatile unsigned char workspace_is_mine;
+
+    unsigned char error_drive;
+
+    unsigned char secbufdev;
+    unsigned long secbuflba;
+
+    unsigned char current_drive;
+    unsigned char current_directory[33 + 31];
+    unsigned char library_drive;
+    unsigned char library_directory[33 + 31];
+    // isodirent is 33 bytes upto/inc name length byte
+    // name length can be up to 1Fh or 31 chars if compliant, 222 chars if not
+    // (222 chars, being even, would attract a padding field)
+    // this length includes NAME.EXT;1 and does not include the length or padding fields if any
+    // after the padding field if any immediately begins the SUSP/RR field if any
+};
+
+extern struct private_workspace *get_private(void);
 
 /* I/O ports for J.G.Harston & Sprow's 16-bit IDE interface */
 struct ide_interface {
@@ -71,11 +93,11 @@ extern void outhn(unsigned char n);
 extern void outhb(unsigned char b);
 extern void outhw(unsigned int w);
 extern void outhl(unsigned long l);
+extern void outstr(const unsigned char *str);
+extern void brk_error(unsigned char num, const unsigned char *msg);
 #ifdef DEBUG
 extern void hexdump(const void *ptr, unsigned int len);
 #endif /* DEBUG */
-extern void outstr(const unsigned char *str);
-extern void brk_error(unsigned char num, const unsigned char *msg);
 
 /* OSWORD layer */
 extern int handle_osword(unsigned char func, void *params);
@@ -171,9 +193,6 @@ struct isopvd {
     unsigned char app_use[512];
     unsigned char _reserved[653];
 };
-
-extern unsigned char current_drive;
-extern unsigned char current_directory[33 + 31];
 
 extern struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name);
 extern struct isodirent *loadrootdir(void);

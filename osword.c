@@ -1,8 +1,6 @@
 #include <string.h>
 #include "swrom.h"
 
-static unsigned char error_drive;
-
 static void osword_controller(unsigned char *params)
 {
     unsigned char device = ((params[0] << 1) & 2) | ((params[6] >> 5) & 1);
@@ -44,13 +42,14 @@ static void osword_controller(unsigned char *params)
 
     // Return sense key in control block, if any
     params[0] = packet_cmd(device, packet, data, datalen) >> 4;
-    if (params[0] != 0) { error_drive = device; }
+    if (params[0] != 0) { get_private()->error_drive = device; }
 }
 
 static void osword_error(unsigned char *params)
 {
     // The error code returned here will most likely just be 70h, as the output
     // of REQUEST SENSE has changed since the old SASI to ST-506 controllers
+    unsigned char error_drive = get_private()->error_drive;
     unsigned char data[18];
     request_sense(error_drive, data);
     params[0] = data[6];

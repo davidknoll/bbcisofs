@@ -6,7 +6,6 @@
 // Details of the shared absolute workspace segment
 extern void _SHARED_RUN__;
 extern void _SHARED_SIZE__;
-volatile unsigned char workspace_is_mine;
 
 // Perform a case-insensitive comparison of a word on the command line
 static unsigned char cmdmatch(const struct regs *regs, const unsigned char *cmd)
@@ -35,27 +34,18 @@ static unsigned char cmdmatch(const struct regs *regs, const unsigned char *cmd)
     }
 }
 
-// Assemble a BRK instruction with an error message in the stack space and execute it
-void brk_error(unsigned char num, const unsigned char *msg)
-{
-    unsigned char *stk = (unsigned char *) 0x0100;
-    stk[0] = 0x00;        // BRK opcode
-    stk[1] = num;         // Error number
-    strcpy(stk + 2, msg); // Error message, null-terminated
-    ((void (*)(void)) stk)();
-}
-
 // Eject/load the disc
 static void eject(void)
 {
+    unsigned char device = get_private()->current_drive;
     unsigned char data[3];
-    mode_sense(current_drive, 0, sizeof data, data);
+    mode_sense(device, 0, sizeof data, data);
     if (data[2] == 0x71) {
         // Door is open, close it
-        start_stop_unit(current_drive, 1, 3);
+        start_stop_unit(device, 1, 3);
     } else {
         // Door is closed, open it
-        start_stop_unit(current_drive, 1, 2);
+        start_stop_unit(device, 1, 2);
     }
 }
 
@@ -83,7 +73,7 @@ static void cdtest3(void)
 #endif /* DEBUG */
 
 // Get the address of our private workspace
-void *get_private(void)
+struct private_workspace *get_private(void)
 {
     return (void *) (((unsigned char *) 0x0DF0)[*((unsigned char *) 0xF4)] << 8);
 }
@@ -91,17 +81,26 @@ void *get_private(void)
 // Service ROM entry point (instead of main)
 void __fastcall__ service(struct regs *regs)
 {
-    unsigned int wkend;
+    unsigned int tmp;
 
     switch (regs->a) {
     case 0x01: // Request absolute workspace
-        wkend = (unsigned int) &_SHARED_RUN__ + (unsigned int) &_SHARED_SIZE__;
-        if (wkend & 0xFF) { wkend += 0x100; }
-        if (regs->y < (wkend >> 8)) { regs->y = (wkend >> 8); }
+        tmp = (unsigned int) &_SHARED_RUN__ + (unsigned int) &_SHARED_SIZE__;
+        if (tmp & 0xFF) { tmp += 0x100; }
+        if (regs->y < (tmp >> 8)) { regs->y = (tmp >> 8); }
         break;
 
     case 0x02: // Request private workspace
-        ((unsigned char *) 0x0DF0)[regs->x] = regs->y++;
+        tmp = sizeof (struct private_workspace);
+        if (tmp & 0xFF) { tmp += 0x100; }
+        ((unsigned char *) 0x0DF0)[regs->x] = regs->y;
+        regs->y += (tmp >> 8);
+
+        tmp = (unsigned int) get_private();
+        memset((struct private_workspace *) tmp, 0, sizeof (struct private_workspace));
+        ((struct private_workspace *) tmp)->error_drive = 0xFF;
+        ((struct private_workspace *) tmp)->secbufdev = 0xFF;
+        ((struct private_workspace *) tmp)->current_drive = 1;
         break;
 
     case 0x04: // *command
@@ -151,7 +150,6 @@ void __fastcall__ service(struct regs *regs)
 #ifdef DEBUG
             outstr("  CDTEST\n  CDTEST2\n  CDTEST3\n  DIRTEST\n");
 #endif /* DEBUG */
-            regs->a = 0;
         } else if (cmdmatch(regs, "")) {
             outstr("\nCD-ROM Filing System\n");
             outstr("  CDFS\n");
@@ -159,7 +157,7 @@ void __fastcall__ service(struct regs *regs)
         break;
 
     case 0x0A: // Absolute workspace is being claimed
-        workspace_is_mine = 0;
+        get_private()->workspace_is_mine = 0;
         break;
 
     case 0x12: // Select filing system

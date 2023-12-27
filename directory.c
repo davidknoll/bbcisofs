@@ -1,16 +1,6 @@
 #include <ctype.h>
 #include "swrom.h"
 
-unsigned char current_drive = 1;
-unsigned char current_directory[33 + 31];
-// unsigned char library_drive = 1;
-// unsigned char library_directory[33 + 31];
-// isodirent is 33 bytes upto/inc name length byte
-// name length can be up to 1Fh or 31 chars if compliant, 222 chars if not
-// (222 chars, being even, would attract a padding field)
-// this length includes NAME.EXT;1 and does not include the length or padding fields if any
-// after the padding field if any immediately begins the SUSP/RR field if any
-
 // Check whether the given directory entry's name field matches the given name
 static unsigned char matchdirent(struct isodirent *dirent, const unsigned char *name)
 {
@@ -84,7 +74,7 @@ struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name)
     struct isodirent *result;
 
     while (size > 0) {
-        dirsecbuf = cachesector(current_drive, lba);
+        dirsecbuf = cachesector(get_private()->current_drive, lba);
 
         // Scan it for a matching entry
         result = finddirent(dirsecbuf, name);
@@ -105,7 +95,7 @@ struct isodirent *findfirst(struct isodirent *dirent, const unsigned char *name)
 // and return a pointer to the root directory entry, or null on error
 struct isodirent *loadrootdir(void)
 {
-    unsigned char *dirsecbuf = cachesector(current_drive, 16);
+    unsigned char *dirsecbuf = cachesector(get_private()->current_drive, 16);
     if (!dirsecbuf) { return 0; }
     return (struct isodirent *) (dirsecbuf + 156);
 }
@@ -114,7 +104,7 @@ struct isodirent *loadrootdir(void)
 // and return a pointer to the volume identifier, or null on error
 unsigned char *loadtitle(void)
 {
-    unsigned char *dirsecbuf = cachesector(current_drive, 16);
+    unsigned char *dirsecbuf = cachesector(get_private()->current_drive, 16);
     unsigned char unpad = 32;
     if (!dirsecbuf) { return 0; }
 
@@ -140,6 +130,7 @@ void dirtest(void)
     outstr("root ent ");
     outhw((unsigned int) rootent);
     outstr("\n");
+    if (!rootent) { return; }
     hexdump(rootent, rootent->direntlen);
 
     // Dump found dir entry
@@ -147,6 +138,7 @@ void dirtest(void)
     outstr("found ent ");
     outhw((unsigned int) foundent);
     outstr("\n");
+    if (!foundent) { return; }
     hexdump(foundent, foundent->direntlen);
 }
 #endif /* DEBUG */

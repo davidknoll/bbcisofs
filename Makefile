@@ -1,5 +1,5 @@
 OBJS = crt0.o atapi.o directory.o fs.o hexdump.o osword.o seccache.o service.o
-CL65FLAGS = -O
+CL65FLAGS = -O -DDEBUG
 
 .PHONY: all clean
 all: cdfs.rom

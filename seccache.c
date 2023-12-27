@@ -2,8 +2,6 @@
 #include "swrom.h"
 
 extern unsigned char secbuf[SECTOR_SIZE];
-static unsigned char secbufdev = 0xFF;
-static unsigned long secbuflba;
 
 // Load the sector with the given LBA from the given drive into the sector buffer
 static unsigned char *cachesector_aux(unsigned char device, unsigned long lba)
@@ -11,9 +9,17 @@ static unsigned char *cachesector_aux(unsigned char device, unsigned long lba)
     struct osword_control oswdata;
     struct osword_error oswerr;
     struct regs oswregs;
+    struct private_workspace *pvt = get_private();
+
+#ifdef DEBUG
+    outstr("[try cache lba ");
+    outhl(lba);
+    outstr("]\n");
+#endif
+
     if (device > 3) { return 0; }
-    if (!workspace_is_mine) { return 0; }
-    if (device == secbufdev && lba == secbuflba) { return secbuf; }
+    if (!(pvt->workspace_is_mine)) { return 0; }
+    if (device == pvt->secbufdev && lba == pvt->secbuflba) { return secbuf; }
 
     // Construct a command packet
     oswdata.controller = device >> 1;
@@ -39,12 +45,12 @@ static unsigned char *cachesector_aux(unsigned char device, unsigned long lba)
         oswregs.x = ((unsigned int) &oswerr);
         oswregs.y = ((unsigned int) &oswerr) >> 8;
         _sys(&oswregs);
-        secbufdev = 0xFF;
+        pvt->secbufdev = 0xFF;
         return 0;
     }
 
-    secbufdev = device;
-    secbuflba = lba;
+    pvt->secbufdev = device;
+    pvt->secbuflba = lba;
     return secbuf;
 }
 
