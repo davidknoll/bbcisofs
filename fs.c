@@ -508,7 +508,7 @@ unsigned long osfsc_handler(unsigned long axy)
         break;
 
     case 0x07: // File handle range
-        axy = 0x005F5A00; // 5Ah to 5Fh
+        axy = (FH_MAX << 16) | (FH_MIN << 8);
         break;
 
     case 0x09: // *EX

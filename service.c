@@ -7,6 +7,12 @@
 extern void _SHARED_RUN__;
 extern void _SHARED_SIZE__;
 
+// FS information for the Master
+static const unsigned char fsinfo[11] = {
+    'C', 'D', 'F', 'S', ' ', ' ', ' ', ' ',
+    FH_MIN, FH_MAX, FS_NO
+};
+
 // Perform a case-insensitive comparison of a word on the command line
 static unsigned char cmdmatch(const struct regs *regs, const unsigned char *cmd)
 {
@@ -165,6 +171,11 @@ void __fastcall__ service(struct regs *regs)
             fs_install();
             regs->a = 0;
         }
+        break;
+
+    case 0x25: // Return filing system information (Master)
+        memcpy(*((unsigned char **) 0xF2) + regs->y, fsinfo, sizeof fsinfo);
+        regs->y += sizeof fsinfo;
         break;
     }
 }

@@ -220,6 +220,8 @@ extern unsigned long osfind_handler(unsigned long axy);
 extern unsigned long osfsc_handler(unsigned long axy);
 extern void fs_install(void);
 
+#define FH_MIN 0x5A
+#define FH_MAX 0x5F
 #define FS_NO 37
 
 struct osfile_control {
