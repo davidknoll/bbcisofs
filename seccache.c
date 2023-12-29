@@ -18,7 +18,7 @@ static unsigned char *cachesector_aux(unsigned char device, unsigned long lba)
 #endif
 
     if (device > 3) { return 0; }
-    if (!(pvt->workspace_is_mine)) { return 0; }
+    if (!(pvt->workspace_is_mine)) { claim_workspace(); }
     if (device == pvt->secbufdev && lba == pvt->secbuflba) { return secbuf; }
 
     // Construct a command packet

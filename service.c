@@ -163,7 +163,9 @@ void __fastcall__ service(struct regs *regs)
         break;
 
     case 0x0A: // Absolute workspace is being claimed
-        get_private()->workspace_is_mine = 0;
+        tmp = (unsigned int) get_private();
+        ((struct private_workspace *) tmp)->workspace_is_mine = 0;
+        ((struct private_workspace *) tmp)->secbufdev = 0xFF;
         break;
 
     case 0x12: // Select filing system

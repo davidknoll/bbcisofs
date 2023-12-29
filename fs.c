@@ -195,56 +195,53 @@ static void readtitleoption(struct osgbpb_control *params)
 // Part of OSGBPB function 8
 static void appendname(struct osgbpb_control *params, struct isodirent *dirent)
 {
+    unsigned char idx, len;
+
+    // Determine the name length excluding any version suffix
+    for (len = 0; len < dirent->namelen; len++) {
+        if (dirent->name[len] == ';') { break; }
+    }
+
     // TODO filename character translation
-    unsigned char *oldaddr = (unsigned char *) params->address++;
-    while (*oldaddr < dirent->namelen) {
-        if (dirent->name[*oldaddr] == ';') { break; }
-        *((unsigned char *) params->address++) = dirent->name[(*oldaddr)++];
+    *((unsigned char *) params->address++) = len;
+    for (idx = 0; idx < len; idx++) {
+        *((unsigned char *) params->address++) = dirent->name[idx];
     }
 }
 
 // OSGBPB function 8
 static void readfilenames(struct osgbpb_control *params)
 {
-    unsigned int dirsec = params->pointer >> 16;
-    unsigned int diroff = params->pointer;
-    struct isodirent *parent = loadrootdir();
-    struct isodirent *current;
-    unsigned long lba = parent->lba_l;
-    unsigned long size = parent->size_l;
+    struct isodirent *parent = loadrootdir(), *current;
+    unsigned long lba, size;
+
+    // Parameters of the directory being listed
     if (parent == 0) { brk_error(0xC7, "Drive error"); }
+    lba = parent->lba_l;
+    size = parent->size_l;
 
-    while (params->count) {
-        // We've come to the actual end of a directory sector
-        if (diroff >= SECTOR_SIZE) {
-            dirsec++;
-            diroff = 0;
-        }
+    // Cycle number, we don't really have that here
+    params->handle = 0;
 
-        // End of the directory listing; there are no more names to read
-        if (((dirsec * SECTOR_SIZE) + diroff) >= size) { break; }
-
+    while (params->count > 0 && params->pointer < size) {
         // Get the directory entry pointed to
-        current = (struct isodirent *) cachesector(get_private()->current_drive, lba + dirsec);
+        current = (struct isodirent *) cachesector(get_private()->current_drive, lba + (params->pointer / SECTOR_SIZE));
         if (current == 0) { brk_error(0xC7, "Drive error"); }
-        current = (struct isodirent *) (((unsigned char *) current) + diroff);
+        current = (struct isodirent *) (((unsigned char *) current) + (params->pointer % SECTOR_SIZE));
 
         // We've come to padding at the end of a directory sector,
         // where a directory entry cannot cross a sector boundary
         if (current->direntlen == 0) {
-            dirsec++;
-            diroff = 0;
+            params->pointer %= SECTOR_SIZE;
+            params->pointer += SECTOR_SIZE;
             continue;
         }
 
         // Copy the filename, advance to next entry
-        params->count--;
         appendname(params, current);
-        diroff += current->direntlen;
+        params->count--;
+        params->pointer += current->direntlen;
     }
-
-    params->handle = 0; // Cycle number, we don't really have that here
-    params->pointer = (((unsigned long) dirsec) << 16) | diroff;
 }
 
 unsigned long osgbpb_handler(unsigned long axy)
@@ -338,7 +335,7 @@ static void catheader(void)
 
     gbpb.address = 0xFFFF0000 | (unsigned int) buf;
     gbpb.count = sizeof buf;
-    osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x05);
+    osgbpb_handler((((unsigned long) &gbpb) << 8) | 0x05);
     for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
     outstr("\nDrive ");
     outhn(buf[buf[0] + 2]);
@@ -348,7 +345,7 @@ static void catheader(void)
 
     gbpb.address = 0xFFFF0000 | (unsigned int) buf;
     gbpb.count = sizeof buf;
-    osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x06);
+    osgbpb_handler((((unsigned long) &gbpb) << 8) | 0x06);
     outstr("\nDir. :");
     for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
     _oswrch('.');
@@ -357,7 +354,7 @@ static void catheader(void)
 
     gbpb.address = 0xFFFF0000 | (unsigned int) buf;
     gbpb.count = sizeof buf;
-    osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x07);
+    osgbpb_handler((((unsigned long) &gbpb) << 8) | 0x07);
     outstr("Lib. :");
     for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
     _oswrch('.');
@@ -375,16 +372,15 @@ static void catnames(void)
     gbpb.handle = 0;
     gbpb.pointer = 0;
 
-    do {
+    while (1) {
         gbpb.address = 0xFFFF0000 | (unsigned int) buf;
         gbpb.count = 1;
-        osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x08);
-        if (gbpb.count == 0) {
-            for (i = 0; i < 4; i++) { _oswrch(' '); }
-            for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
-            _osnewl();
-        }
-    } while (gbpb.count == 0);
+        osgbpb_handler((((unsigned long) &gbpb) << 8) | 0x08);
+        if (gbpb.count) { break; }
+        for (i = 0; i < 4; i++) { _oswrch(' '); }
+        for (i = 0; i < buf[0]; i++) { _oswrch(buf[i + 1]); }
+        _osnewl();
+    }
 }
 
 // Part of FSCV functions 9 & 10
@@ -394,7 +390,7 @@ static void infoname(unsigned char *name)
     unsigned char i, ft;
 
     attrs.filename = name;
-    ft = osfile_handler((((unsigned int) &attrs) << 8) | 0x05);
+    ft = osfile_handler((((unsigned long) &attrs) << 8) | 0x05);
     if (ft == 0) { brk_error(0xD6, "Not found"); }
     for (i = 0; attrs.filename[i] > ' '; i++) { _oswrch(attrs.filename[i]); }
     for (; i < 32; i++) { _oswrch(' '); }
@@ -435,7 +431,7 @@ static void exnames(void)
     do {
         gbpb.address = 0xFFFF0000 | (unsigned int) buf;
         gbpb.count = 1;
-        osgbpb_handler((((unsigned int) &gbpb) << 8) | 0x08);
+        osgbpb_handler((((unsigned long) &gbpb) << 8) | 0x08);
         if (gbpb.count == 0) {
             buf[buf[0] + 1] = '\0';
             infoname(buf + 1);
@@ -449,7 +445,7 @@ static void starrun(unsigned char *name)
     struct regs regs;
     struct osfile_control osf;
     osf.filename = name;
-    osfile_handler((((unsigned int) &osf) << 8) | 0x05);
+    osfile_handler((((unsigned long) &osf) << 8) | 0x05);
 
     // Find the command line tail
     while (*name == ' ') { name++; }
@@ -467,7 +463,7 @@ static void starrun(unsigned char *name)
         memset(&regs, 0, sizeof regs);
         regs.pc = osf.execution;
         osf.execution = 0;
-        osfile_handler((((unsigned int) &osf) << 8) | 0xFF);
+        osfile_handler((((unsigned long) &osf) << 8) | 0xFF);
         _sys(&regs);
     }
 }
@@ -508,7 +504,7 @@ unsigned long osfsc_handler(unsigned long axy)
         break;
 
     case 0x07: // File handle range
-        axy = (FH_MAX << 16) | (FH_MIN << 8);
+        axy = ((unsigned long) FH_MAX << 16) | ((unsigned long) FH_MIN << 8);
         break;
 
     case 0x09: // *EX
@@ -584,6 +580,12 @@ void fs_install(void)
     regs.x = 0x0F;
     regs.pc = OSBYTE;
     _sys(&regs);
+}
+
+void claim_workspace(void)
+{
+    struct regs regs;
+    memset(&regs, 0, sizeof regs);
 
     // Call service ROM function 0x0A to claim the absolute workspace
     regs.a = 0x8F;
